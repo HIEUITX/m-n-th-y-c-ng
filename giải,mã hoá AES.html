@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AES File Encryptor/Decryptor</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+  <h2 class="text-center mb-4">🔐 AES File Encryptor / Decryptor (Hỗ trợ ảnh)</h2>
+
+  <div class="mb-3">
+    <label for="key" class="form-label">🔑 Nhập khóa (tự do độ dài):</label>
+    <input type="text" class="form-control" id="key" placeholder="Nhập khóa mã hóa/giải mã">
+  </div>
+
+  <div class="mb-3">
+    <label for="file" class="form-label">📂 Chọn file bất kỳ:</label>
+    <input type="file" class="form-control" id="file">
+  </div>
+
+  <div class="mb-3 d-flex justify-content-center">
+    <button class="btn btn-primary me-2" onclick="encryptFile()">Mã hóa</button>
+    <button class="btn btn-success" onclick="decryptFile()">Giải mã</button>
+  </div>
+
+  <div id="status" class="text-center mt-4"></div>
+</div>
+
+<script>
+  function readFileAsArrayBuffer(file, callback) {
+    const reader = new FileReader();
+    reader.onload = () => callback(reader.result);
+    reader.readAsArrayBuffer(file);
+  }
+
+  function download(content, fileName) {
+    const blob = new Blob([content], {type: 'application/octet-stream'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    a.click();
+  }
+
+  function encryptFile() {
+    const fileInput = document.getElementById('file');
+    const keyInput = document.getElementById('key').value;
+
+    if (!fileInput.files.length || !keyInput) {
+      alert("Vui lòng chọn file và nhập khóa.");
+      return;
+    }
+
+    readFileAsArrayBuffer(fileInput.files[0], function(buffer) {
+      const key = CryptoJS.SHA256(keyInput);
+      const iv = CryptoJS.lib.WordArray.random(16);
+      const wordArray = CryptoJS.lib.WordArray.create(buffer);
+      const encrypted = CryptoJS.AES.encrypt(wordArray, key, { iv: iv }).ciphertext;
+
+      const ivHex = iv.toString(CryptoJS.enc.Hex);
+      const ivBytes = hexToBytes(ivHex);
+      const encryptedBytes = wordArrayToUint8Array(encrypted);
+
+      const combined = new Uint8Array(ivBytes.length + encryptedBytes.length);
+      combined.set(ivBytes, 0);
+      combined.set(encryptedBytes, ivBytes.length);
+
+      download(combined, fileInput.files[0].name + '.enc');
+      document.getElementById("status").innerText = "✅ File đã được mã hóa và tải xuống.";
+    });
+  }
+
+  function decryptFile() {
+    const fileInput = document.getElementById('file');
+    const keyInput = document.getElementById('key').value;
+
+    if (!fileInput.files.length || !keyInput) {
+      alert("Vui lòng chọn file và nhập khóa.");
+      return;
+    }
+
+    readFileAsArrayBuffer(fileInput.files[0], function(buffer) {
+      try {
+        const key = CryptoJS.SHA256(keyInput);
+        const data = new Uint8Array(buffer);
+        const ivBytes = data.slice(0, 16);
+        const encryptedBytes = data.slice(16);
+
+        const iv = CryptoJS.lib.WordArray.create(ivBytes);
+        const encryptedWA = CryptoJS.lib.WordArray.create(encryptedBytes);
+
+        const decrypted = CryptoJS.AES.decrypt({ ciphertext: encryptedWA }, key, { iv: iv });
+        const decryptedBytes = wordArrayToUint8Array(decrypted);
+
+        download(decryptedBytes, fileInput.files[0].name.replace('.enc', '.dec'));
+        document.getElementById("status").innerText = "✅ File đã được giải mã và tải xuống.";
+      } catch (e) {
+        console.error(e);
+        document.getElementById("status").innerText = "❌ Giải mã thất bại. Có thể sai khóa hoặc định dạng file.";
+      }
+    });
+  }
+
+  function hexToBytes(hex) {
+    const bytes = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return new Uint8Array(bytes);
+  }
+
+  function wordArrayToUint8Array(wordArray) {
+    const words = wordArray.words;
+    const sigBytes = wordArray.sigBytes;
+    const u8 = new Uint8Array(sigBytes);
+    for (let i = 0; i < sigBytes; i++) {
+      u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+    }
+    return u8;
+  }
+</script>
+
+</body>
+</html>
