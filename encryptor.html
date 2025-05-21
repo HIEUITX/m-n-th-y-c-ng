@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AES File Encryptor (Trang gửi)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        /* Custom font import */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Basic styling for the modal overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1); /* shadow-lg */
+            max-width: 90%;
+            width: 400px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
+            🔐 AES File Encryptor
+        </h2>
+        <p class="text-center text-gray-600 mb-6">
+            (Mã hóa và gửi đến trang giải mã)
+        </p>
+
+        <div class="mb-5">
+            <label for="key" class="block text-gray-700 text-sm font-semibold mb-2">
+                🔑 Nhập khóa (tự do độ dài):
+            </label>
+            <input type="text" id="key" placeholder="Nhập khóa mã hóa của bạn"
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 ease-in-out">
+        </div>
+
+        <div class="mb-6">
+            <label for="file" class="block text-gray-700 text-sm font-semibold mb-2">
+                📂 Chọn file bất kỳ:
+            </label>
+            <input type="file" id="file"
+                   class="w-full text-gray-700 bg-white border border-gray-300 rounded-lg cursor-pointer file:mr-4 file:py-2 file:px-4
+                          file:rounded-lg file:border-0 file:text-sm file:font-semibold
+                          file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition duration-200 ease-in-out">
+            
+        </div>
+
+        
+
+        <div class="flex flex-col sm:flex-row justify-center space-y-3 sm:space-y-0 sm:space-x-4 mb-6">
+            <button onclick="encryptAndSendFile()"
+                    class="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md
+                           hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75
+                           transition duration-200 ease-in-out transform hover:scale-105">
+                Mã hóa và Gửi
+            </button>
+            <button onclick="window.location.href='decryptor.html'"
+                    class="w-full sm:w-auto px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md
+                           hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75
+                           transition duration-200 ease-in-out transform hover:scale-105">
+                Đi đến trang giải mã
+            </button>
+        </div>
+
+        <div id="status" class="text-center mt-4 text-lg font-medium"></div>
+    </div>
+
+    <div id="customModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 id="modalTitle" class="text-xl font-semibold mb-3"></h3>
+            <p id="modalMessage" class="text-gray-700 mb-5"></p>
+            <button onclick="closeModal()"
+                    class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                Đóng
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Displays a custom modal message instead of using alert().
+         * @param {string} title - The title of the modal.
+         * @param {string} message - The message content for the modal.
+         */
+        function showCustomMessage(title, message) {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMessage').innerText = message;
+            document.getElementById('customModal').classList.remove('hidden');
+        }
+
+        /**
+         * Hides the custom modal.
+         */
+        function closeModal() {
+            document.getElementById('customModal').classList.add('hidden');
+        }
+
+        /**
+         * Reads a file as an ArrayBuffer.
+         * @param {File | Blob} file - The file or Blob to read.
+         * @param {function(ArrayBuffer): void} callback - The callback function to execute with the ArrayBuffer.
+         */
+        function readFileAsArrayBuffer(file, callback) {
+            const reader = new FileReader();
+            reader.onload = () => callback(reader.result);
+            reader.onerror = (error) => {
+                console.error("Error reading file:", error);
+                showCustomMessage("Lỗi đọc file", "Không thể đọc file đã chọn.");
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        /**
+         * Converts a hexadecimal string to a Uint8Array.
+         * @param {string} hex - The hexadecimal string.
+         * @returns {Uint8Array} The converted Uint8Array.
+         */
+        function hexToBytes(hex) {
+            const bytes = [];
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes.push(parseInt(hex.substr(i, 2), 16));
+            }
+            return new Uint8Array(bytes);
+        }
+
+        /**
+         * Converts a CryptoJS WordArray to a Uint8Array.
+         * @param {CryptoJS.lib.WordArray} wordArray - The WordArray to convert.
+         * @returns {Uint8Array} The converted Uint8Array.
+         */
+        function wordArrayToUint8Array(wordArray) {
+            const words = wordArray.words;
+            const sigBytes = wordArray.sigBytes;
+            const u8 = new Uint8Array(sigBytes);
+            for (let i = 0; i < sigBytes; i++) {
+                u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+            }
+            return u8;
+        }
+
+        /**
+         * Encrypts the selected file or default text and sends it to the decryptor page via localStorage.
+         */
+        function encryptAndSendFile() {
+            const fileInput = document.getElementById('file');
+            const defaultTextarea = document.getElementById('defaultText');
+            const keyInput = document.getElementById('key').value;
+            const statusDiv = document.getElementById("status");
+
+            let fileToEncrypt;
+            let originalFileName;
+            let originalFileType;
+
+            if (fileInput.files.length > 0) {
+                // If a file is selected, use that file
+                fileToEncrypt = fileInput.files[0];
+                originalFileName = fileToEncrypt.name;
+                originalFileType = fileToEncrypt.type;
+            } else if (defaultTextarea.value.trim() !== '') {
+                // If no file is selected but default text is present, use default text
+                originalFileName = 'default_text.txt'; // Default name for the text content
+                originalFileType = 'text/plain'; // Default type for text content
+                fileToEncrypt = new Blob([defaultTextarea.value], { type: originalFileType });
+            } else {
+                // Neither a file nor default text is provided
+                showCustomMessage("Lỗi", "Vui lòng chọn một file hoặc nhập văn bản mặc định để mã hóa.");
+                return;
+            }
+
+            if (!keyInput) {
+                showCustomMessage("Lỗi", "Vui lòng nhập khóa mã hóa.");
+                return;
+            }
+
+            statusDiv.innerText = "Đang mã hóa file và chuẩn bị gửi...";
+            statusDiv.classList.remove('text-green-600', 'text-red-600');
+            statusDiv.classList.add('text-blue-600');
+
+            readFileAsArrayBuffer(fileToEncrypt, function(buffer) {
+                try {
+                    const key = CryptoJS.SHA256(keyInput);
+                    const iv = CryptoJS.lib.WordArray.random(16);
+                    const wordArray = CryptoJS.lib.WordArray.create(buffer);
+                    const encrypted = CryptoJS.AES.encrypt(wordArray, key, { iv: iv }).ciphertext;
+
+                    const ivHex = iv.toString(CryptoJS.enc.Hex);
+                    const ivBytes = hexToBytes(ivHex);
+                    const encryptedBytes = wordArrayToUint8Array(encrypted);
+
+                    const combined = new Uint8Array(ivBytes.length + encryptedBytes.length);
+                    combined.set(ivBytes, 0);
+                    combined.set(encryptedBytes, ivBytes.length);
+
+                    // Convert Uint8Array to Base64 string for storage in localStorage
+                    const base64Data = btoa(String.fromCharCode.apply(null, combined));
+
+                    // Store encrypted data, original file name, and type in localStorage
+                    localStorage.setItem('encryptedFileData', base64Data);
+                    localStorage.setItem('originalFileName', originalFileName);
+                    localStorage.setItem('originalFileType', originalFileType);
+
+                    statusDiv.innerText = "✅ File đã mã hóa và được gửi đến trang giải mã.";
+                    statusDiv.classList.remove('text-blue-600');
+                    statusDiv.classList.add('text-green-600');
+
+                    // Redirect to the decryptor page after a short delay
+                    setTimeout(() => {
+                        window.location.href = 'decryptor.html';
+                    }, 1000); // Redirect after 1 second
+                } catch (e) {
+                    console.error("Encryption error:", e);
+                    statusDiv.innerText = "❌ Mã hóa thất bại. Vui lòng thử lại.";
+                    statusDiv.classList.remove('text-blue-600');
+                    statusDiv.classList.add('text-red-600');
+                    showCustomMessage("Lỗi mã hóa", "Đã xảy ra lỗi trong quá trình mã hóa file.");
+                }
+            });
+        }
+    </script>
+
+</body>
+</html>

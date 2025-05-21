@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AES File Decryptor (Trang nhận)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        /* Custom font import */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Basic styling for the modal overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1); /* shadow-lg */
+            max-width: 90%;
+            width: 400px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
+            🔓 AES File Decryptor
+        </h2>
+        <p class="text-center text-gray-600 mb-6" id="fileInfo">
+            (Đang chờ file mã hóa...)
+        </p>
+
+        <div class="mb-5">
+            <label for="key" class="block text-gray-700 text-sm font-semibold mb-2">
+                🔑 Nhập khóa giải mã:
+            </label>
+            <input type="text" id="key" placeholder="Nhập khóa giải mã của bạn"
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 ease-in-out">
+        </div>
+
+        <div class="flex flex-col sm:flex-row justify-center space-y-3 sm:space-y-0 sm:space-x-4 mb-6">
+            <button onclick="decryptReceivedFile()" id="decryptButton" disabled
+                    class="w-full sm:w-auto px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md
+                           hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75
+                           transition duration-200 ease-in-out transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                Giải mã và Lưu file
+            </button>
+            <button onclick="window.location.href='encryptor.html'"
+                    class="w-full sm:w-auto px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md
+                           hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75
+                           transition duration-200 ease-in-out transform hover:scale-105">
+                Đi đến trang mã hóa
+            </button>
+        </div>
+
+        <div id="status" class="text-center mt-4 text-lg font-medium"></div>
+    </div>
+
+    <div id="customModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 id="modalTitle" class="text-xl font-semibold mb-3"></h3>
+            <p id="modalMessage" class="text-gray-700 mb-5"></p>
+            <button onclick="closeModal()"
+                    class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                Đóng
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Displays a custom modal message instead of using alert().
+         * @param {string} title - The title of the modal.
+         * @param {string} message - The message content for the modal.
+         */
+        function showCustomMessage(title, message) {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMessage').innerText = message;
+            document.getElementById('customModal').classList.remove('hidden');
+        }
+
+        /**
+         * Hides the custom modal.
+         */
+        function closeModal() {
+            document.getElementById('customModal').classList.add('hidden');
+        }
+
+        /**
+         * Initiates a file download.
+         * @param {Uint8Array} content - The content of the file as a Uint8Array.
+         * @param {string} fileName - The name of the file to download.
+         * @param {string} fileType - The MIME type of the file.
+         */
+        function download(content, fileName, fileType) {
+            // Use the provided fileType, which now correctly includes charset=utf-8 for text files
+            const blob = new Blob([content], { type: fileType });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = fileName;
+            document.body.appendChild(a); // Append to body to ensure it's in the DOM
+            a.click();
+            document.body.removeChild(a); // Clean up
+            URL.revokeObjectURL(a.href); // Release the object URL
+        }
+
+        /**
+         * Converts a hexadecimal string to a Uint8Array.
+         * @param {string} hex - The hexadecimal string.
+         * @returns {Uint8Array} The converted Uint8Array.
+         */
+        function hexToBytes(hex) {
+            const bytes = [];
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes.push(parseInt(hex.substr(i, 2), 16));
+            }
+            return new Uint8Array(bytes);
+        }
+
+        /**
+         * Converts a CryptoJS WordArray to a Uint8Array.
+         * @param {CryptoJS.lib.WordArray} wordArray - The WordArray to convert.
+         * @returns {Uint8Array} The converted Uint8Array.
+         */
+        function wordArrayToUint8Array(wordArray) {
+            const words = wordArray.words;
+            const sigBytes = wordArray.sigBytes;
+            const u8 = new Uint8Array(sigBytes);
+            for (let i = 0; i < sigBytes; i++) {
+                u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+            }
+            return u8;
+        }
+
+        /**
+         * Decrypts the received file from localStorage.
+         */
+        function decryptReceivedFile() {
+            const keyInput = document.getElementById('key').value;
+            const statusDiv = document.getElementById("status");
+            const encryptedBase64Data = localStorage.getItem('encryptedFileData');
+            const originalFileName = localStorage.getItem('originalFileName');
+            const originalFileType = localStorage.getItem('originalFileType'); // Retrieve the stored file type
+
+            if (!keyInput) {
+                showCustomMessage("Lỗi", "Vui lòng nhập khóa giải mã.");
+                return;
+            }
+
+            if (!encryptedBase64Data) {
+                showCustomMessage("Lỗi", "Không tìm thấy file mã hóa để giải mã. Vui lòng quay lại trang mã hóa.");
+                return;
+            }
+
+            statusDiv.innerText = "Đang giải mã file...";
+            statusDiv.classList.remove('text-green-600', 'text-red-600');
+            statusDiv.classList.add('text-blue-600');
+
+            try {
+                // Convert Base64 string back to Uint8Array
+                const combined = new Uint8Array(atob(encryptedBase64Data).split('').map(char => char.charCodeAt(0)));
+
+                const key = CryptoJS.SHA256(keyInput);
+                const ivBytes = combined.slice(0, 16);
+                const encryptedBytes = combined.slice(16);
+
+                const iv = CryptoJS.lib.WordArray.create(ivBytes);
+                const encryptedWA = CryptoJS.lib.WordArray.create(encryptedBytes);
+
+                const decrypted = CryptoJS.AES.decrypt({ ciphertext: encryptedWA }, key, { iv: iv });
+
+                // Check if decryption was successful (e.g., if the first few bytes are not zero)
+                // This is a basic check, a more robust check would involve padding or integrity checks
+                if (decrypted.sigBytes === 0) {
+                     throw new Error("Decryption resulted in empty data, likely wrong key or corrupted file.");
+                }
+
+                let decryptedBytes = wordArrayToUint8Array(decrypted);
+
+                // No longer explicitly adding BOM here.
+                // The `fileType` passed to `download` will handle the charset.
+
+                // Determine the output file name
+                const decryptedFileName = originalFileName.endsWith('.enc') ?
+                                          originalFileName.replace('.enc', '') :
+                                          originalFileName; // Remove .enc if present, otherwise keep original
+
+                // Trigger the download with the correct originalFileType (including charset)
+                download(decryptedBytes, decryptedFileName, originalFileType);
+                statusDiv.innerText = "✅ File đã được giải mã và tải xuống.";
+                statusDiv.classList.remove('text-blue-600');
+                statusDiv.classList.add('text-green-600');
+
+                // Clear localStorage after successful decryption
+                localStorage.removeItem('encryptedFileData');
+                localStorage.removeItem('originalFileName');
+                localStorage.removeItem('originalFileType');
+                document.getElementById('fileInfo').innerText = "✅ File đã được giải mã và lưu. Dữ liệu đã xóa khỏi bộ nhớ.";
+                document.getElementById('decryptButton').disabled = true; // Disable button after decryption
+            } catch (e) {
+                console.error("Decryption error:", e);
+                statusDiv.innerText = "❌ Giải mã thất bại. Có thể sai khóa hoặc file bị hỏng.";
+                statusDiv.classList.remove('text-blue-600');
+                statusDiv.classList.add('text-red-600');
+                showCustomMessage("Lỗi giải mã", "Giải mã thất bại. Vui lòng kiểm tra lại khóa hoặc file.");
+            }
+        }
+
+        // Initialize on page load
+        window.onload = function() {
+            const encryptedBase64Data = localStorage.getItem('encryptedFileData');
+            const originalFileName = localStorage.getItem('originalFileName');
+            const fileInfoDiv = document.getElementById('fileInfo');
+            const decryptButton = document.getElementById('decryptButton');
+
+            if (encryptedBase64Data && originalFileName) {
+                fileInfoDiv.innerText = `📂 File đã mã hóa sẵn sàng giải mã: ${originalFileName}`;
+                decryptButton.disabled = false;
+            } else {
+                fileInfoDiv.innerText = "Không tìm thấy file mã hóa. Vui lòng mã hóa file từ trang trước.";
+                decryptButton.disabled = true;
+            }
+        };
+    </script>
+
+</body>
+</html>
