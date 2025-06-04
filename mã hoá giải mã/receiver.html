@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trang Mã hóa/Giải mã AES</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        #messages {
+            max-height: 400px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e0 #f7fafc;
+        }
+        #messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        #messages::-webkit-scrollbar-track {
+            background: #f7fafc;
+            border-radius: 10px;
+        }
+        #messages::-webkit-scrollbar-thumb {
+            background-color: #cbd5e0;
+            border-radius: 10px;
+            border: 2px solid #f7fafc;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div id="chat-section" class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
+            Trang Chat (Mã hóa/Giải mã)
+        </h2>
+
+        <div class="mb-4">
+            <label for="myIdInput" class="block text-gray-700 text-sm font-semibold mb-2">
+                ID của bạn:
+            </label>
+            <input type="text" id="myIdInput" placeholder="Ví dụ: Alice hoặc Bob"
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200">
+        </div>
+
+        <div id="messages" class="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-4 h-96 overflow-y-auto">
+            <p class="text-gray-500 text-sm text-center">Gửi tin nhắn từ đây!</p>
+        </div>
+
+        <div class="flex flex-col gap-2">
+            <input type="password" id="encryptionKeyInput" placeholder="Mật khẩu cho tin nhắn này..."
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition duration-200">
+            <p class="text-xs text-gray-500 mt-1">Sử dụng mật khẩu này cho mỗi tin nhắn bạn GỬI.</p>
+
+            <input type="text" id="messageInput" placeholder="Gõ tin nhắn của bạn..."
+                   class="flex-grow px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200">
+            <button id="sendBtn"
+                    class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md
+                           hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75
+                           transition duration-200">
+                Gửi Tin Nhắn
+            </button>
+            <button id="clearChatBtn"
+                    class="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md
+                           hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75
+                           transition duration-200 mt-2">
+                Xóa Đoạn Chat
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const myIdInput = document.getElementById('myIdInput');
+        const encryptionKeyInput = document.getElementById('encryptionKeyInput');
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const clearChatBtn = document.getElementById('clearChatBtn');
+
+        const LOCAL_STORAGE_KEY = 'chatMessages'; // Key to store messages in localStorage
+
+        // Function to encrypt a message
+        function encryptMessage(message, key) {
+            try {
+                if (!key) {
+                    console.warn("No key provided, message will not be encrypted.");
+                    return { encrypted: message, isEncrypted: false };
+                }
+                const encrypted = CryptoJS.AES.encrypt(message, key).toString();
+                return { encrypted: encrypted, isEncrypted: true };
+            } catch (e) {
+                console.error("Encryption error:", e);
+                return { encrypted: message, isEncrypted: false };
+            }
+        }
+
+        // Function to decrypt a message
+        function decryptMessage(encryptedMessage, key) {
+            try {
+                if (!key) {
+                    return { decrypted: encryptedMessage, success: false };
+                }
+                const decrypted = CryptoJS.AES.decrypt(encryptedMessage, key);
+                const originalText = decrypted.toString(CryptoJS.enc.Utf8);
+                if (originalText === '') { // Often means wrong key or corrupted data
+                    return { decrypted: encryptedMessage, success: false };
+                }
+                return { decrypted: originalText, success: true };
+            } catch (e) {
+                return { decrypted: encryptedMessage, success: false };
+            }
+        }
+
+        // Load ID on page load
+        window.addEventListener('load', () => {
+            const savedMyId = localStorage.getItem('myChatId');
+            if (savedMyId) {
+                myIdInput.value = savedMyId;
+            }
+            displayMessages(); // Display existing messages
+        });
+
+        // Save ID on input change
+        myIdInput.addEventListener('input', () => {
+            localStorage.setItem('myChatId', myIdInput.value.trim());
+            displayMessages(); // Re-render messages to update 'Bạn' status
+        });
+
+        // Send message
+        sendBtn.addEventListener('click', () => {
+            const senderId = myIdInput.value.trim();
+            const message = messageInput.value.trim();
+            const encryptionKey = encryptionKeyInput.value;
+
+            if (!senderId) {
+                alert('Vui lòng nhập ID của bạn trước khi gửi tin nhắn.');
+                return;
+            }
+            if (!message) {
+                alert('Vui lòng nhập nội dung tin nhắn.');
+                return;
+            }
+            if (!encryptionKey) {
+                alert('Vui lòng nhập mật khẩu mã hóa cho tin nhắn này.');
+                return;
+            }
+
+            const { encrypted, isEncrypted } = encryptMessage(message, encryptionKey);
+
+            let messages = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
+            
+            const newMessage = {
+                sender: senderId,
+                text: encrypted, // Store the encrypted message
+                timestamp: new Date().toLocaleTimeString('vi-VN'),
+                isEncrypted: isEncrypted, // Store whether it was actually encrypted
+            };
+            messages.push(newMessage);
+
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages));
+
+            // Clear inputs and re-display all messages
+            messageInput.value = '';
+            encryptionKeyInput.value = ''; // Clear key after sending
+            displayMessages();
+        });
+
+        // Clear chat
+        clearChatBtn.addEventListener('click', () => {
+            if (confirm('Bạn có chắc chắn muốn xóa toàn bộ đoạn chat này không?')) {
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
+                displayMessages();
+                alert('Đoạn chat đã được xóa.');
+            }
+        });
+
+        // Function to display all messages from localStorage
+        function displayMessages() {
+            const currentMyId = myIdInput.value.trim();
+            messagesDiv.innerHTML = ''; // Clear current messages
+            let messages = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
+
+            if (messages.length === 0) {
+                messagesDiv.innerHTML = '<p class="text-gray-500 text-sm text-center">Chưa có tin nhắn nào.</p>';
+            }
+
+            messages.forEach((msg, index) => {
+                const messageContainer = document.createElement('div');
+                messageContainer.classList.add('mb-2', 'px-3', 'py-2', 'rounded-lg', 'max-w-[75%]');
+
+                const displaySender = (msg.sender === currentMyId) ? 'Bạn' : msg.sender;
+                const messageType = (msg.sender === currentMyId) ? 'sent' : 'received';
+
+                if (messageType === 'sent') {
+                    messageContainer.classList.add('bg-blue-500', 'text-white', 'ml-auto', 'rounded-br-none');
+                } else {
+                    messageContainer.classList.add('bg-gray-200', 'text-gray-800', 'mr-auto', 'rounded-bl-none');
+                }
+
+                if (msg.isEncrypted) {
+                    messageContainer.innerHTML = `
+                        <div class="font-semibold">${displaySender} (${msg.timestamp}):</div>
+                        <div id="msg-${index}">
+                            [Tin nhắn đã mã hóa]
+                            <button class="decrypt-btn px-2 py-1 bg-purple-500 text-white text-xs rounded-md mt-1 hover:bg-purple-600 transition duration-200"
+                                data-index="${index}" data-encrypted-text="${msg.text}">Giải mã</button>
+                        </div>
+                    `;
+                } else {
+                    // Non-encrypted messages
+                    messageContainer.innerHTML = `<div class="font-semibold">${displaySender} (${msg.timestamp}):</div><div>${msg.text}</div>`;
+                }
+                messagesDiv.appendChild(messageContainer);
+            });
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            addDecryptButtonListeners(); // Add listeners after messages are rendered
+        }
+
+        // Add event listeners for decrypt buttons
+        function addDecryptButtonListeners() {
+            document.querySelectorAll('.decrypt-btn').forEach(button => {
+                // Prevent duplicate listeners
+                button.removeEventListener('click', handleDecryptClick);
+                button.addEventListener('click', handleDecryptClick);
+            });
+        }
+
+        // Handler for decrypt button clicks
+        async function handleDecryptClick(event) {
+            const index = event.target.dataset.index;
+            const encryptedText = event.target.dataset.encryptedText;
+            const password = prompt('Nhập mật khẩu để giải mã tin nhắn này:');
+
+            if (password) {
+                const { decrypted, success } = decryptMessage(encryptedText, password);
+                const messageElement = document.getElementById(`msg-${index}`);
+                if (messageElement) {
+                    if (success) {
+                        messageElement.innerHTML = `<div>${decrypted}</div>`;
+                        // Remove the button and update data-decrypted status in localStorage if needed
+                        // (For this simple example, we don't persist decrypted state)
+                    } else {
+                        alert('Mật khẩu không đúng hoặc tin nhắn bị lỗi.');
+                        // Re-render button if decryption failed
+                        messageElement.innerHTML = `<div>[Không thể giải mã, vui lòng thử lại mật khẩu]</div>
+                        <button class="decrypt-btn px-2 py-1 bg-purple-500 text-white text-xs rounded-md mt-1 hover:bg-purple-600 transition duration-200"
+                        data-index="${index}" data-encrypted-text="${encryptedText}">Giải mã lại</button>`;
+                        addDecryptButtonListeners(); // Re-add listener to the new button
+                    }
+                }
+            }
+        }
+
+
+        // Automatic update when storage event occurs from another page
+        window.addEventListener('storage', (event) => {
+            if (event.key === LOCAL_STORAGE_KEY) {
+                displayMessages(); // Re-render all messages including new ones
+            }
+        });
+    </script>
+</body>
+</html>
