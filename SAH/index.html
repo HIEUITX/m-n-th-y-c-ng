@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Web A - Gửi file & Nhận file</title>
+  <style>
+    body { font-family: Arial; padding: 20px; max-width: 500px; margin: auto; }
+    button, input { margin-top: 10px; width: 100%; padding: 10px; }
+    #status, #fileHash, #receiveInfo, #checkResult { margin-top: 10px; font-family: monospace; }
+    a.downloadLink { display: inline-block; margin-top: 10px; padding: 10px; background: #2980b9; color: white; text-decoration: none; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <h2>Web A - Gửi file & Nhận file</h2>
+  <input type="file" id="fileInput" />
+  <button id="sendBtn">📤 Gửi file</button>
+  <div id="status">Chưa gửi file</div>
+  <div id="fileHash"></div>
+  <hr />
+  <h3>Nhận file từ Web B</h3>
+  <div id="receiveInfo">Chưa nhận file</div>
+  <div id="fileHashReceive"></div>
+  <div id="checkResult"></div>
+  <div id="downloadLinks"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <script>
+    const ws = new WebSocket("ws://localhost:8080");
+
+    const fileInput = document.getElementById("fileInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const status = document.getElementById("status");
+    const fileHashDiv = document.getElementById("fileHash");
+
+    const receiveInfo = document.getElementById("receiveInfo");
+    const fileHashReceive = document.getElementById("fileHashReceive");
+    const checkResult = document.getElementById("checkResult");
+    const downloadLinks = document.getElementById("downloadLinks");
+
+    ws.onopen = () => {
+      status.textContent = "✅ Đã kết nối WebSocket. Đăng ký là Web A...";
+      ws.send(JSON.stringify({action: "register", role: "A"}));
+    };
+
+    ws.onerror = () => {
+      status.textContent = "❌ Lỗi kết nối WebSocket.";
+    };
+
+    ws.onmessage = event => {
+      const data = JSON.parse(event.data);
+
+      if(data.status === "registered" && data.role === "A") {
+        status.textContent = "✅ Đăng ký thành công với server.";
+      }
+
+      if(data.status === "file_received") {
+        status.textContent = "✅ Server đã nhận file.";
+      }
+
+      if(data.status === "file_from_B") {
+        const filename = data.filename;
+        const fileHashSent = data.fileHash;
+        const base64Data = data.fileData;
+
+        receiveInfo.textContent = `📥 Đã nhận file: ${filename}`;
+     
+
+        // Giải mã base64 thành Uint8Array
+        const binaryStr = atob(base64Data);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for(let i=0; i<len; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        // Tính lại hash
+        const wordArray = CryptoJS.lib.WordArray.create(bytes);
+        const hash = CryptoJS.SHA256(wordArray).toString();
+
+        if(hash === fileHashSent) {
+          checkResult.style.color = "limegreen";
+          checkResult.textContent = "✔️ Tính toàn vẹn dữ liệu đúng!";
+        } else {
+          checkResult.style.color = "red";
+          checkResult.textContent = "❌ Dữ liệu bị thay đổi!";
+        }
+
+        // Tạo link tải file
+        const blob = new Blob([bytes]);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.textContent = "⬇️ Tải file " + filename;
+        a.className = "downloadLink";
+
+        downloadLinks.innerHTML = ""; // Xóa link cũ nếu có
+        downloadLinks.appendChild(a);
+      }
+    };
+
+    sendBtn.onclick = () => {
+      const file = fileInput.files[0];
+      if(!file) {
+        alert("Chọn file trước đã!");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        const bytes = new Uint8Array(e.target.result);
+        const wordArray = CryptoJS.lib.WordArray.create(bytes);
+        const hash = CryptoJS.SHA256(wordArray).toString();
+
+ 
+
+        // Base64 hóa dữ liệu
+        let binary = '';
+        for(let b of bytes) {
+          binary += String.fromCharCode(b);
+        }
+        const base64Data = btoa(binary);
+
+        // Gửi dữ liệu lên server với action send_file_A
+        ws.send(JSON.stringify({
+          action: "send_file_A",
+          filename: file.name,
+          fileData: base64Data,
+          fileHash: hash
+        }));
+
+        status.textContent = "📤 Đang gửi file...";
+      };
+      reader.readAsArrayBuffer(file);
+    };
+  </script>
+</body>
+</html>
