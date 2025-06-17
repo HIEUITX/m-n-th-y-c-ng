@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <title>Đăng ký | File Signer</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <form method="POST" class="card">
+            <h2>Đăng ký tài khoản</h2>
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                <div class="alert">{{ messages[0] }}</div>
+              {% endif %}
+            {% endwith %}
+            <input type="email" name="email" placeholder="Email của bạn" required>
+            <input type="text" name="username" placeholder="Tên đăng nhập" required autofocus>
+            <input type="password" name="password" placeholder="Mật khẩu" required>
+            <button type="submit">Đăng ký</button>
+            <div class="link">
+                <a href="/login">Đã có tài khoản? Đăng nhập ngay</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

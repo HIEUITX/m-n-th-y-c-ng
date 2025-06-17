@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <title>Đăng nhập | File Signer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <form method="POST" class="card">
+            <h2>Đăng nhập</h2>
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                <div class="alert">{{ messages[0] }}</div>
+              {% endif %}
+            {% endwith %}
+            <input type="text" name="username" placeholder="Tên đăng nhập" required autofocus>
+            <input type="password" name="password" placeholder="Mật khẩu" required>
+            <button type="submit">Đăng nhập</button>
+            <a href="/register">Chưa có tài khoản? Đăng ký</a>
+        </form>
+    </div>
+</body>
+</html>
