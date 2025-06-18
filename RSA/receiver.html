@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Người Nhận</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0; padding: 0;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            padding: 30px 40px;
+            width: 100%;
+            max-width: 800px;
+        }
+        h1 {
+            color: #007bff;
+            text-align: center;
+            margin-bottom: 25px;
+            font-weight: 700;
+        }
+        #pendingFilesList {
+            list-style: none;
+            padding: 0;
+            margin-top: 20px;
+        }
+        #pendingFilesList li {
+            background-color: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap; /* Cho phép wrap trên màn hình nhỏ */
+            gap: 10px;
+        }
+        #pendingFilesList li.verified {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        #pendingFilesList li.failed {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        #pendingFilesList li span {
+            flex-grow: 1; /* Cho phép tên file mở rộng */
+            word-break: break-all;
+            margin-right: 10px;
+        }
+        #pendingFilesList li button, #pendingFilesList li .download-link {
+            flex-shrink: 0; /* Ngăn nút co lại */
+            background-color: #28a745; /* Màu xanh lá cho nút xác minh */
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s ease;
+            text-decoration: none; /* Cho link */
+        }
+        #pendingFilesList li button:hover {
+            background-color: #218838;
+        }
+        #pendingFilesList li .download-link {
+            background-color: #007bff; /* Màu xanh dương cho nút tải xuống */
+            margin-left: 10px; /* Khoảng cách với button trước đó */
+        }
+        #pendingFilesList li .download-link:hover {
+            background-color: #0056b3;
+        }
+        .status-box {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: 500;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            word-break: break-word;
+        }
+        .status-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status-info { background-color: #cfe2ff; color: #055160; border: 1px solid #b6d4fe; }
+        p {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Người Nhận: Các File Đang Chờ</h1>
+        <div id="connectionStatus" class="status-box status-info">Đang kết nối tới server...</div>
+        <ul id="pendingFilesList">
+            <li>Không có file nào đang chờ.</li>
+        </ul>
+        <p><a href="/">Quay lại trang chính</a></p>
+    </div>
+
+    <script>
+        // Đảm bảo kết nối tới đúng địa chỉ và cổng của server Node.js
+        const socket = io('http://localhost:3000');
+        // Nếu server của bạn chạy trên một cổng khác, hãy thay đổi 3000 cho phù hợp.
+
+        const connectionStatusDiv = document.getElementById('connectionStatus');
+        const pendingFilesList = document.getElementById('pendingFilesList');
+
+        // --- RẤT QUAN TRỌNG: THAY THẾ KHÓA CÔNG KHAI NÀY BẰNG KHÓA CÔNG KHAI THỰC TẾ CỦA SERVER BẠN ---
+        // Bạn phải lấy khóa này từ console của server.js khi nó khởi động.
+        // Ví dụ: console.log('Server: KHÓA CÔNG KHAI (DÙNG CHO receiver.html):\n', publicKey);
+        // DÁN TOÀN BỘ CHUỖI KHÓA Ở ĐÂY, BAO GỒM CẢ CÁC DÒNG BEGIN VÀ END.
+        const SERVER_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2eT9o7tJtY/R... (phần còn lại của khóa của bạn) ...7o6+nE8oUoN/kDAgMBAAE=
+-----END PUBLIC KEY-----`;
+        // --------------------------------------------------------------------------------------------------
+
+        socket.on('connect', () => {
+            console.log('Người nhận: Đã kết nối Socket.IO tới server thành công.');
+            connectionStatusDiv.className = 'status-box status-success';
+            connectionStatusDiv.textContent = 'Đã kết nối tới server. Đang chờ file mới.';
+            socket.emit('join_room', { room: 'receiver_room' }); 
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.log(`Người nhận: Đã ngắt kết nối Socket.IO. Lý do: ${reason}`);
+            connectionStatusDiv.className = 'status-box status-error';
+            connectionStatusDiv.textContent = `Đã mất kết nối tới server (${reason}). Vui lòng làm mới trang hoặc kiểm tra server.`;
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Người nhận: LỖI KẾT NỐI Socket.IO:', error);
+            connectionStatusDiv.className = 'status-box status-error';
+            connectionStatusDiv.textContent = `LỖI KẾT NỐI tới server: ${error.message}. Đảm bảo server đang chạy và truy cập từ http://localhost:3000.`;
+        });
+
+        // Nhận danh sách các file đang chờ ban đầu (khi người nhận mới load trang hoặc join room)
+        socket.on('pending_files_list', (data) => {
+            console.log('Người nhận: Danh sách file đang chờ ban đầu:', data.files);
+            pendingFilesList.innerHTML = ''; // Xóa danh sách cũ
+            if (data.files && data.files.length > 0) {
+                data.files.forEach(file => addFileToList(file));
+            } else {
+                pendingFilesList.innerHTML = '<li>Không có file nào đang chờ.</li>';
+            }
+        });
+
+        // Nhận thông báo khi có file mới
+        // Dữ liệu từ server sẽ bao gồm: file_id, filename, file_hash, signature, download_url
+        socket.on('new_file_available', (fileData) => {
+            console.log('Người nhận: Có file mới đang chờ:', fileData);
+            // Xóa thông báo "Không có file" nếu có
+            if (pendingFilesList.querySelector('li') && pendingFilesList.querySelector('li').textContent === 'Không có file nào đang chờ.') {
+                pendingFilesList.innerHTML = '';
+            }
+            addFileToList(fileData);
+        });
+
+        // Hàm thêm file vào danh sách hiển thị
+        function addFileToList(file) {
+            const listItem = document.createElement('li');
+            listItem.id = `file-${file.file_id}`; // Đặt ID để dễ dàng cập nhật
+            // Thêm dữ liệu vào dataset để truy cập dễ dàng hơn khi xác minh
+            listItem.dataset.fileId = file.file_id;
+            listItem.dataset.filename = file.filename;
+            listItem.dataset.originalHash = file.file_hash; // Hash gốc từ server
+            listItem.dataset.signature = file.signature; // Chữ ký từ server
+            listItem.dataset.downloadUrl = file.download_url; // URL tải xuống
+
+            const timestamp = new Date().toLocaleString(); 
+
+            listItem.innerHTML = `
+                <span>${file.filename} <br> <small>ID: ${file.file_id.substring(0, 8)}... (${timestamp})</small></span>
+                <button onclick="downloadAndVerifyFile('${file.file_id}')">Tải xuống & Xác minh</button>
+            `;
+            pendingFilesList.prepend(listItem); // Thêm vào đầu danh sách
+        }
+
+        // Hàm tải xuống file và xác minh chữ ký
+        async function downloadAndVerifyFile(fileId) {
+            const fileItem = document.getElementById(`file-${fileId}`);
+            if (!fileItem) return;
+
+            const verifyButton = fileItem.querySelector('button');
+            const originalFilename = fileItem.dataset.filename;
+            const originalHash = fileItem.dataset.originalHash;
+            const signature = fileItem.dataset.signature;
+            const downloadUrl = fileItem.dataset.downloadUrl;
+
+            verifyButton.disabled = true;
+            verifyButton.textContent = 'Đang tải xuống & xác minh...';
+            verifyButton.style.backgroundColor = '#ffc107'; // Màu vàng tạm thời
+
+            try {
+                // Bước 1: Tải file từ server
+                console.log(`Người nhận: Đang tải file: ${downloadUrl}`);
+                const response = await fetch(downloadUrl);
+                if (!response.ok) {
+                    throw new Error(`Lỗi HTTP khi tải file: ${response.status} ${response.statusText}`);
+                }
+                const blob = await response.blob(); // Lấy file dưới dạng Blob
+
+                // Để người dùng có thể tải về trình duyệt:
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = originalFilename; // Đặt tên file khi tải xuống
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url); // Giải phóng URL đối tượng
+
+                console.log(`Người nhận: Đã tải xuống file "${originalFilename}". Đang tính toán hash.`);
+
+                // Bước 2: Tính toán hash của file đã tải xuống
+                const downloadedFileBuffer = await blob.arrayBuffer();
+                const downloadedFileHashBuffer = await crypto.subtle.digest('SHA-256', downloadedFileBuffer);
+                const downloadedFileHashArray = Array.from(new Uint8Array(downloadedFileHashBuffer));
+                const downloadedFileHexHash = downloadedFileHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+                console.log('Người nhận: Hash của file đã tải xuống:', downloadedFileHexHash);
+                console.log('Người nhận: Hash gốc từ server:', originalHash);
+
+                // Bước 3: Xác minh chữ ký số
+                const publicK = await crypto.subtle.importKey(
+                    "pem",
+                    SERVER_PUBLIC_KEY_PEM,
+                    { name: "RSASSA-PKCS1-v1_5", hash: { name: "SHA-256" } },
+                    false,
+                    ["verify"]
+                );
+
+                const signatureBuffer = hexStringToUint8Array(signature); // Chuyển chữ ký hex sang Uint8Array
+
+                const isSignatureValid = await crypto.subtle.verify(
+                    { name: "RSASSA-PKCS1-v1_5" },
+                    publicK,
+                    signatureBuffer,
+                    new TextEncoder().encode(originalHash) // Ký trên hash, không phải toàn bộ file
+                );
+
+                console.log('Người nhận: Kết quả xác minh chữ ký:', isSignatureValid);
+                console.log('Người nhận: Hash khớp:', downloadedFileHexHash === originalHash);
+
+
+                if (isSignatureValid && downloadedFileHexHash === originalHash) {
+                    fileItem.className = 'verified';
+                    fileItem.innerHTML = `<span>${originalFilename} (Xác minh THÀNH CÔNG!)</span>` +
+                                         `<a class="download-link" href="${downloadUrl}" download="${originalFilename}">Tải lại</a>`;
+                    connectionStatusDiv.className = 'status-box status-success';
+                    connectionStatusDiv.textContent = `File "${originalFilename}" đã được xác minh thành công!`;
+                } else {
+                    fileItem.className = 'failed';
+                    fileItem.innerHTML = `<span>${originalFilename} (Xác minh THẤT BẠI!)</span>`;
+                    connectionStatusDiv.className = 'status-box status-error';
+                    connectionStatusDiv.textContent = `Xác minh file "${originalFilename}" THẤT BẠI! Có thể file đã bị thay đổi hoặc chữ ký không hợp lệ.`;
+                }
+
+            } catch (error) {
+                console.error('Người nhận: LỖI trong quá trình tải xuống hoặc xác minh file:', error);
+                fileItem.className = 'failed';
+                fileItem.innerHTML = `<span>${originalFilename} (Xác minh THẤT BẠI! Lỗi: ${error.message})</span>`;
+                connectionStatusDiv.className = 'status-box status-error';
+                connectionStatusDiv.textContent = `Đã xảy ra lỗi khi xử lý file "${originalFilename}". Chi tiết lỗi trong Console.`;
+            } finally {
+                // Đặt lại nút nếu quá trình không hoàn tất hoặc lỗi trước khi hiển thị kết quả
+                if (verifyButton && verifyButton.disabled) {
+                    verifyButton.disabled = false;
+                    verifyButton.textContent = 'Tải xuống & Xác minh';
+                    verifyButton.style.backgroundColor = '#28a745';
+                }
+            }
+        }
+
+        // Hàm tiện ích để chuyển đổi chuỗi hex thành Uint8Array
+        function hexStringToUint8Array(hexString) {
+            if (hexString.length % 2 !== 0) {
+                throw new Error("Chuỗi hex không hợp lệ (chiều dài không chẵn).");
+            }
+            const arrayBuffer = new Uint8Array(hexString.length / 2);
+            for (let i = 0; i < hexString.length; i += 2) {
+                arrayBuffer[i / 2] = parseInt(hexString.substr(i, 2), 16);
+            }
+            return arrayBuffer;
+        }
+    </script>
+</body>
+</html>

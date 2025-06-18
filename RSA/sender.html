@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Người Gửi</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0; padding: 0;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            padding: 30px 40px;
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+        h1 {
+            color: #007bff;
+            margin-bottom: 25px;
+            font-weight: 700;
+        }
+        input[type="file"] {
+            display: block;
+            margin: 20px auto;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            width: calc(100% - 20px);
+            max-width: 300px;
+            background-color: #e9ecef;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+            margin-top: 15px;
+        }
+        button:hover:not(:disabled) {
+            background-color: #218838;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .status-box {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: 500;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            word-break: break-word;
+        }
+        .status-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status-info { background-color: #cfe2ff; color: #055160; border: 1px solid #b6d4fe; }
+        p {
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Người Gửi: Tải Lên & Ký File</h1>
+        <div id="connectionStatus" class="status-box status-info">Đang kết nối tới server...</div>
+        <input type="file" id="fileInput">
+        <button id="uploadButton" disabled>Chọn File để Gửi</button>
+        <div id="fileStatus" class="status-box status-info"></div>
+        <p><a href="/">Quay lại trang chính</a></p>
+    </div>
+
+    <script>
+        // Đảm bảo kết nối tới đúng địa chỉ và cổng của server Node.js
+        const socket = io('http://localhost:3000'); 
+        // Nếu server của bạn chạy trên một cổng khác, hãy thay đổi 3000 cho phù hợp.
+
+        const fileInput = document.getElementById('fileInput');
+        const uploadButton = document.getElementById('uploadButton');
+        const fileStatusDiv = document.getElementById('fileStatus');
+        const connectionStatusDiv = document.getElementById('connectionStatus');
+
+        let selectedFile = null;
+        let fileHash = null;
+        let fileSignature = null;
+
+        // Socket.IO Events
+        socket.on('connect', () => {
+            console.log('Người gửi: Đã kết nối Socket.IO tới server thành công.');
+            connectionStatusDiv.className = 'status-box status-success';
+            connectionStatusDiv.textContent = 'Đã kết nối tới server.';
+            uploadButton.disabled = false; // Kích hoạt nút tải lên khi kết nối
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.log(`Người gửi: Đã ngắt kết nối Socket.IO. Lý do: ${reason}`);
+            connectionStatusDiv.className = 'status-box status-error';
+            connectionStatusDiv.textContent = `Đã mất kết nối tới server (${reason}). Vui lòng làm mới trang hoặc kiểm tra server.`;
+            uploadButton.disabled = true;
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Người gửi: LỖI KẾT NỐI Socket.IO:', error);
+            connectionStatusDiv.className = 'status-box status-error';
+            connectionStatusDiv.textContent = `LỖI KẾT NỐI tới server: ${error.message}. Đảm bảo server đang chạy và truy cập từ http://localhost:3000.`;
+            uploadButton.disabled = true;
+        });
+
+        // Nhận chữ ký từ server
+        socket.on('signature_result', (data) => {
+            if (data.status === 'SUCCESS') {
+                fileSignature = data.signature;
+                console.log('Người gửi: Đã nhận chữ ký từ server thành công:', fileSignature.substring(0, 30) + '...');
+                fileStatusDiv.className = 'status-box status-success';
+                fileStatusDiv.textContent = 'Đã nhận chữ ký từ server. Đang tải file lên...';
+                uploadFileWithSignature(); // Tiếp tục tải file lên
+            } else {
+                console.error('Người gửi: Lỗi khi nhận chữ ký từ server:', data.message);
+                fileStatusDiv.className = 'status-box status-error';
+                fileStatusDiv.textContent = `Lỗi ký số: ${data.message}`;
+                uploadButton.disabled = false; // Cho phép thử lại
+            }
+        });
+
+        // File Input Change Event
+        fileInput.addEventListener('change', (event) => {
+            selectedFile = event.target.files[0];
+            if (selectedFile) {
+                uploadButton.textContent = `Gửi file: ${selectedFile.name}`;
+                uploadButton.disabled = false;
+                fileStatusDiv.className = 'status-box status-info';
+                fileStatusDiv.textContent = 'Sẵn sàng gửi file. Nhấn nút để bắt đầu.';
+            } else {
+                uploadButton.textContent = 'Chọn File để Gửi';
+                uploadButton.disabled = true;
+                fileStatusDiv.className = 'status-box status-info';
+                fileStatusDiv.textContent = '';
+            }
+        });
+
+        // Upload Button Click Event
+        uploadButton.addEventListener('click', async () => {
+            if (!selectedFile) {
+                alert('Vui lòng chọn một file.');
+                return;
+            }
+
+            uploadButton.disabled = true;
+            fileStatusDiv.className = 'status-box status-info';
+            fileStatusDiv.textContent = 'Đang tính toán hash của file...';
+            console.log('Người gửi: Đang tính toán hash của file...');
+
+            try {
+                // Bước 1: Tính toán hash của file
+                const fileBuffer = await selectedFile.arrayBuffer();
+                const hashBuffer = await crypto.subtle.digest('SHA-256', fileBuffer);
+                const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
+                fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join(''); // convert bytes to hex string
+
+                console.log('Người gửi: Hash của file:', fileHash);
+                fileStatusDiv.textContent = 'Đã tính hash. Đang gửi hash đến server để ký...';
+
+                // Bước 2: Gửi hash đến server để ký
+                socket.emit('request_signature', { hash: fileHash });
+
+            } catch (error) {
+                console.error('Người gửi: Lỗi khi tính toán hash hoặc gửi yêu cầu ký:', error);
+                fileStatusDiv.className = 'status-box status-error';
+                fileStatusDiv.textContent = `Lỗi: ${error.message}`;
+                uploadButton.disabled = false;
+            }
+        });
+
+        // Hàm tải file lên server sau khi đã có chữ ký
+        async function uploadFileWithSignature() {
+            if (!selectedFile || !fileHash || !fileSignature) {
+                fileStatusDiv.className = 'status-box status-error';
+                fileStatusDiv.textContent = 'Lỗi nội bộ: Thiếu file, hash hoặc chữ ký.';
+                uploadButton.disabled = false;
+                return;
+            }
+
+            fileStatusDiv.textContent = 'Đang tải file và chữ ký lên server...';
+            console.log('Người gửi: Đang tải file lên endpoint /upload_with_signature...');
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('fileHash', fileHash);
+            formData.append('signature', fileSignature);
+
+            try {
+                const response = await fetch('/upload_with_signature', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    console.log('Người gửi: Tải file lên thành công:', result);
+                    fileStatusDiv.className = 'status-box status-success';
+                    fileStatusDiv.textContent = `File "${selectedFile.name}" đã được gửi và ký số thành công!`;
+                    selectedFile = null;
+                    fileInput.value = ''; // Xóa file đã chọn trên input
+                    uploadButton.textContent = 'Chọn File để Gửi';
+                } else {
+                    console.error('Người gửi: Lỗi khi tải file lên server:', result.message);
+                    fileStatusDiv.className = 'status-box status-error';
+                    fileStatusDiv.textContent = `Lỗi tải lên: ${result.message || 'Lỗi không xác định.'}`;
+                }
+            } catch (error) {
+                console.error('Người gửi: Lỗi mạng hoặc server khi tải file lên:', error);
+                fileStatusDiv.className = 'status-box status-error';
+                fileStatusDiv.textContent = `Lỗi mạng: ${error.message}`;
+            } finally {
+                uploadButton.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

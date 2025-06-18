@@ -1,0 +1,4 @@
+Đây là nội dung mặc định của file data.txt. Bạn có thể thay đổi nội dung này để kiểm tra quá trình mã hóa và giải mã.
+Chào mừng bạn đến với ứng dụng mã hóa và giải mã file AES.
+Hãy nhập khóa của bạn và chọn một file hoặc sử dụng văn bản mặc định này để bắt đầu.
+Chúc bạn một ngày tốt lành
